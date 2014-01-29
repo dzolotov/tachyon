@@ -1,10 +1,12 @@
 <?php
   session_start();
   $filename = $_GET["filename"];
-  $data = "";
-  $file = fopen("xml/".$filename,"rb");
-  while ($entry = fread($file, 4096)) {
-  	$data.=$entry;
+  if (!empty($filename)) {
+    $data = "";
+    $file = fopen("xml/".$filename,"rb");
+    while ($entry = fread($file, 4096)) {
+    	$data.=$entry;
+    }
   }
 ?><!DOCTYPE html>
 <html>
@@ -23,6 +25,9 @@ editAreaLoader.init({
 </head>
 <body>
 <form action="editXMLAction.php" method="POST">
+<?
+  if (empty($filename)) echo '<label for="filename">Название файла</label><input type="text" name="filename" id="filename" required="required"/>';
+?>
 <input type="hidden" name="filename" value="<? echo $filename ?>"/>
 <textarea cols="80" rows="20" id="content" name="content"><? echo $data ?></textarea><br/>
 <input type="submit" value="Сохранить изменения"></input>

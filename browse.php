@@ -54,7 +54,7 @@ function editXML(id) {
 }
 
 function newTemplate() {
-    window.open('createXML.php',"_blank","location,width=800,height=500");
+    window.open('editXML.php',"_blank","location,width=800,height=500");
 }
 -->
 </script>
