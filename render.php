@@ -39,7 +39,7 @@ class Render {
         $el = trim($el);
         if (strpos($el, ":") === FALSE && strpos($el, "//") === FALSE) {
             return $el; //direct string
-            
+
         }
         $el = trim($el);
         if (strpos($el, "//") !== FALSE) {
@@ -58,13 +58,15 @@ class Render {
             // var_dump($namespace, $tag);
             if ($namespace != "r" && $namespace != "env") {
                 return $this->parameters[$el]; //get local attribute
-                
+
+            } else if ($namespace == "r") {
+                //todo: content
             } else {
                 if ($namespace == "env") {
                     //get environment variable
                     return $this->dataSource->getEnv($tag);
                     //	    return $_SESSION["var_".$tag];
-                    
+
                 }
             }
         }
@@ -75,7 +77,7 @@ class Render {
         $el = trim($el);
         if (strpos($el, ":") === FALSE && strpos($el, "//") === FALSE) {
             return $el; //direct string
-            
+
         }
         $el = trim($el);
         if (strpos($el, "//") == 0) {
@@ -93,28 +95,28 @@ class Render {
             $tag = substr($el, strpos($el, ":") + 1);
             if ($namespace != "r" && $namespace != "env") {
                 return $this->parameters[$el]; //get local attribute
-                
+
             } else {
                 if ($namespace == "env") {
                     //get environment variable
                     return $this->dataSource->getEnv($tag);
                     //	    return $_SESSION["var_".$tag];
-                    
+
                 }
             }
         }
         //process el
-        
+
     }
     function hasExpression($value) {
         if (strpos($value, "//") !== FALSE) {
             return true; //reference to data source
-            
+
         }
         if (strpos($value, ":") !== FALSE) {
             $namespace = substr($value, 0, strpos($value, ":"));
             if ($namespace == "env") return true; //reference to environment
-            
+
         }
         return false;
     }
@@ -123,7 +125,7 @@ class Render {
         $this->injectedParameters[] = $val;
         //    $this->append("params:".$fragment,$val);		//todo: lazy adding
         //  }
-        
+
     }
     function registerExpression($value) {
         if (strpos($value, "//") !== FALSE) {
@@ -165,10 +167,10 @@ class Render {
                 if (array_key_exists($attr_name, $this->parameters)) {
                     //	echo "Value overrided to ".$this->parameters[$attr_name]."\n";
                     $this->contextData[$attr_name] = $this->parameters[$attr_name]; //set to overridede value
-                    
+
                 } else {
                     $this->contextData[$attr_name] = $attr_value; //set default value
-                    
+
                 }
             }
             sort($names);
@@ -225,7 +227,7 @@ class Render {
                     //	    echo "Embedding fragment ".$element_name." with ";
                     //	    var_dump($params);
                     $this->content.= $this->renderFragment($element_name, $params, false); //embedded fragment
-                    
+
                 } else {
                     //	    echo "Processing special action ".$tagName."\n";
                     switch ($tagName) {
@@ -255,7 +257,7 @@ class Render {
             }
             //    echo "Start element: ".$element_name."\n";
             //    var_dump($element_attrs);
-            
+
         } else {
             //    echo "Skipping element: ".$element_name;
             $this->skipping = $element_name;
@@ -281,7 +283,7 @@ class Render {
             }
             //    $this->skipping = FALSE;
             //    echo "End element: ".$element_name."\n";
-            
+
         }
     }
 
@@ -291,7 +293,7 @@ class Render {
         // echo "Character data ".$data;
         //  if (@$this->skipping!==FALSE) echo "Skipping";
         //  echo "\n";
-        if (@$this->skipping === FALSE) $this->content.= trim(htmlentities($data));
+        if (@$this->skipping === FALSE) $this->content.= htmlentities($data);
     }
 
     //Parse XML document
@@ -422,7 +424,7 @@ class Render {
             $this->parseXML($xml_filename, "scan", $content, $tag, $embeddedFragments, $injectedParameters);
             $bindings[$tag] = $xml_filename;
             $this->memcache->set("file:" . $xml_filename, filemtime("xml/" . $xml_filename) . ":" . $tag); //store filename timestamp
-            
+
         }
         //update bindings in cache:
         $bindEntries = array();
@@ -436,16 +438,27 @@ class Render {
         }
         return;
         //  return $bindings;
-        
+
     }
 
     function rulesToString($id, $selector) {
         $rules = $this->cssRules[$selector];
-        $ruleArr = array();
-        foreach ($rules as $ruleName => $ruleValue) {
-            $ruleArr[] = $ruleName . ":" . $ruleValue;
+
+        $extRules = array();
+        foreach ($rules as $innerSelector => $innerRules) {
+
+            $ruleArr = array();
+            foreach ($innerRules as $ruleName => $ruleValue) {
+                $ruleArr[] = $ruleName . ":" . $ruleValue;
+            }
+
+            if (!empty($innerSelector)) {
+                $innerSelector = ($innerSelector[0] == ":" ? "" : " ") . $innerSelector;
+            }
+
+            $extRules[] = ".c" . $id . $innerSelector . "{" . implode(";", $ruleArr) . "}";
         }
-        return ".c" . $id . "{" . implode(";", $ruleArr) . "}";
+        return implode("\n", $extRules);
     }
 
     function is_selector_exists($selector) {
@@ -462,13 +475,13 @@ class Render {
             $cases[] = $fragment . "@" . $this->theme . "#" . $variant; //without language
             $cases[] = $fragment . "!" . $this->language . "#" . $variant; //without theme with language
             $cases[] = $fragment . "#" . $variant; //without theme and language
-            
+
         } else {
             $cases[] = $fragment . "@" . $this->theme . "!" . $this->language; //with language
             $cases[] = $fragment . "@" . $this->theme; //without language
             $cases[] = $fragment . "!" . $this->language; //without theme with language
             $cases[] = $fragment; //without theme and language
-            
+
         }
         // var_dump($cases);
         // echo "<br/>";
@@ -511,7 +524,7 @@ class Render {
                 } else {
                      // var_dump("Added obj:".$paramName." to dataset (".$this->resolveObject($paramName).")");
                     $dataSet[] = $this->resolveObject($paramName); //save default value
-                    
+
                 }
             }
         }
@@ -536,7 +549,7 @@ class Render {
                 }
                  // var_dump($pm.":".$this->resolveObject($pm));
                 $this->append($pm . ":" . $this->resolveObject($pm), $keyData); //store key to //alias/objectId
-                
+
             } else if (substr($paramName, 0, 4) == "env:") $this->append($paramName, $keyData);
         }
         if (!array_key_exists($fragment, $this->bindings)) return $fragment . " is not found";
@@ -576,7 +589,7 @@ class Render {
         } else {
             $this->refreshCSS();
         }
-        //    echo "CSS File Selector: ".$this->cssFileSelector;
+        // echo "CSS File Selector: ".$this->cssFileSelector;
         $this->css = array();
         $this->sourceSelectors = array();
 
@@ -647,7 +660,7 @@ class Render {
                         $this->memcache->delete("cssselectors:" . $selector);
                         // echo "Invalidate selector: ".$selector."\n";
                         $this->memcache->delete("cssrules:" . $selector); //invalidate selector definition
-                        
+
                     }
                 }
             }
@@ -667,7 +680,7 @@ class Render {
             $cssFiles[] = $filename;
         }
         $allRules = array();
-        //  var_dump($cssFiles);
+        // var_dump($cssFiles);die;
         foreach ($cssFiles as $cssFile) {
             $this->memcache->delete("cssfile:" . $cssFile);
             //    echo $cssFile;
@@ -676,53 +689,79 @@ class Render {
             while ($data = fread($fp, 4096)) $cssContent.= $data;
             $cssContent = str_replace("\r", " ", str_replace("\n", " ", $cssContent));
             $cssContent = trim($cssContent);
-            $pos = 0;
-            while (($loc = strpos($cssContent, "{", $pos)) !== FALSE) {
-                //      echo $loc;
-                $selector = trim(substr($cssContent, $pos, $loc - $pos));
-                $pos = strpos($cssContent, "}", $loc) + 1; //to next. todo: skip quotes
-                //      echo "Selector is ".$selector;
-                $rules = trim(substr($cssContent, $loc + 1, $pos - $loc - 2));
-                $cssrules = array();
-                $cssPos = 0;
-                //      echo "Rules is ".$rules."\n";
-                while (($delim = strpos($rules, ":", $cssPos)) !== FALSE) {
-                    $ruleAttribute = substr($rules, $cssPos, $delim - $cssPos);
-                    $delimStored = $delim;
-                    $ln = strlen($rules);
-                    $quotes = false;
-                    while ($delim < $ln) {
-                        if ($rules[$delim] == "\"") $quotes = !$quotes;
-                        if ($rules[$delim] == ";" && !$quotes) break;
-                        $delim++;
+
+            $closeBracket = 0;
+            while (($openBracket = strpos($cssContent, "{", $closeBracket)) !== FALSE) {
+                $selector = trim(substr($cssContent, $closeBracket, $openBracket - $closeBracket));
+
+                $innerCloseBracket = $openBracket+1;
+                while (($innerOpenBracket = strpos($cssContent, "{", $innerCloseBracket)) !== FALSE) {
+                    // echo "$innerOpenBracket . $innerCloseBracket: " . substr($cssContent, $innerCloseBracket);
+                    $innerSelector = trim(substr($cssContent, $innerCloseBracket, $innerOpenBracket - $innerCloseBracket));
+                    if ($innerSelector == "@") {
+                        // if inner selector in ("", "@") -> root selector rules
+                        $innerSelector = "";
                     }
-                    $rule = substr($rules, $delimStored + 1, $delim - ($delimStored + 1));
-                    $delim++;
-                    while ($delim < $ln) {
-                        if ($rules[$delim] != " ") break;
-                        $delim++;
+
+                    $closeBracket = strpos($cssContent, "}", $innerCloseBracket) + 1; //to next root selector. todo: skip quotes
+                    if ($innerOpenBracket > $closeBracket) {
+                        // found root open/close brackets - break
+
+                        break;
                     }
-                    //todo: associate rule with source file
-                    $cssrules[$ruleAttribute] = trim($rule);
-                    //search for end
-                    $cssPos = $delim;
+                    // var_dump("innerLoc: $innerOpenBracket, innerPos: $innerCloseBracket");
+                    $innerCloseBracket = strpos($cssContent, "}", $innerOpenBracket) + 1; //to next inner selector. todo: skip quotes
+
+                    //      echo "Selector is ".$selector;
+                    // var_dump("innerLoc: $innerOpenBracket, innerPos: $innerCloseBracket");
+                    // var_dump(substr($cssContent, $innerCloseBracket));
+
+                    $rules = trim(substr($cssContent, $innerOpenBracket + 1, $innerCloseBracket - $innerOpenBracket - 2));
+                    // var_dump($innerSelector, $rules);
+                    $cssrules = array();
+                    $cssPos = 0;
+                    //      echo "Rules is ".$rules."\n";
+                    while (($delim = strpos($rules, ":", $cssPos)) !== FALSE) {
+                        $ruleAttribute = trim(substr($rules, $cssPos, $delim - $cssPos));
+                        $delimStored = $delim;
+                        $ln = strlen($rules);
+                        $quotes = false;
+                        while ($delim < $ln) {
+                            if ($rules[$delim] == "\"") $quotes = !$quotes;
+                            if ($rules[$delim] == ";" && !$quotes) break;
+                            $delim++;
+                        }
+                        $rule = substr($rules, $delimStored + 1, $delim - ($delimStored + 1));
+                        $delim++;
+                        while ($delim < $ln) {
+                            if ($rules[$delim] != " ") break;
+                            $delim++;
+                        }
+                        //todo: associate rule with source file
+                        $cssrules[$ruleAttribute] = trim($rule);
+                        //search for end
+                        $cssPos = $delim;
+                    }
+                    $this->append("cssfile:" . $cssFile, $selector); //associate file with selector
+                    $allRules[$selector][$innerSelector] = $cssrules;
+
                 }
-                $this->append("cssfile:" . $cssFile, $selector); //associate file with selector
+                $closeBracket = strpos($cssContent, "}", $innerCloseBracket) + 1; //to next root selector. todo: skip quotes
+
                 $this->memcache->set("cssfileupdated:" . $cssFile, filemtime("css/" . $cssFile));
-                $allRules[$selector] = $cssrules;
             }
         }
         if ($filename == "") {
             $this->memcache->set("cssfilesindex", implode(",", $cssFiles)); //css files index
-            
+
         }
-        //  var_dump($allRules);
+        // var_dump($allRules);
         //override default rules
         //store rules to cache
         foreach ($allRules as $selector => $ruleset) {
             $ruleentry = implode(";", $ruleset);
             $this->memcache->set("cssrules:" . $selector, $ruleentry); //store specific css rules (hash???)
-            
+
         }
         //extract existing rules from cache
         if ($filename != "") {
@@ -743,7 +782,7 @@ class Render {
         }
         if ($filename == "") {
             $this->memcache->set("cssrulesindex", implode(",", array_keys($allRules))); //css rules index
-            
+
         }
     }
 

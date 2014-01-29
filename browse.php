@@ -96,13 +96,30 @@ $css = scandir("css");
 $themes = array();
 $languages = array();
 //scan for defined themes
+
+$shift = 0;
+
 foreach ($css as $file) {
     if (substr($file, strlen($file) - 4, 4) == ".css") {
         $cssContent = file("css/" . $file);
+        // var_dump($cssContent);
         foreach ($cssContent as $str) {
+            $inlinePos = 0;
+            $closingTagFound = false;
+            while (strpos($str,"}",$inlinePos)!==FALSE) {
+                // echo "minus $shift in <$str>";
+                $shift--;
+                $closingTagFound = true;
+                $inlinePos = strpos($str,"}",$inlinePos)+1;
+            }
+            if ($closingTagFound) continue;
             $selectorStart = strpos($str, "{");
             if ($selectorStart !== FALSE) {
+                // echo "plus $shift in <$str>";
+                $shift++;
+                if ($shift!=1) continue;        //not the first level
                 $selector = trim(substr($str, 0, $selectorStart));
+                echo $selector."\n";
                 $themeDelimiter = strpos($selector, "@");
                 if ($themeDelimiter !== FALSE) {
                     //theme defined
@@ -121,6 +138,7 @@ foreach ($css as $file) {
         }
     }
 }
+
 //scan for languages
 $xmls = scandir("xml");
 $fragments = array();
@@ -257,6 +275,22 @@ foreach ($xmls as $file) {
         $parents[$file] = $render->getParent($fragment);
     }
 }
+
+foreach ($css as $file) {
+    $file = trim($file);
+    if (substr($file, strlen($file) - 4, 4) == ".css") {
+        $description = false;
+        $f = file("css/" . $file);
+        foreach ($f as $fp) {
+        }
+        $descriptions[$file] = $description;
+        $fragment = $fragments[$file];
+        $params[$file] = $render->getParams($fragment);
+        $parents[$file] = $render->getParent($fragment);
+    }
+}
+
+
 
 sublist($xmls, null, $fragments, $descriptions, $params, $parents);
 // foreach ($xmls as $file) {
