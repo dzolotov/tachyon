@@ -21,18 +21,27 @@ require_once "render.php";
 <script>
 <!--
 function change(definition) {
-	document.location.href="?"+definition;
+    oldHref = document.location.href;
+    hash = "";
+    if (oldHref.indexOf("#")>=0) hash=oldHref.substring(oldHref.indexOf("#"));
+	document.location.href="?"+definition+hash;
 }
 
 function selectTemplate() {
+    oldHref = document.location.href;
+    hash = "";
+    if (oldHref.indexOf("#")>=0) hash=oldHref.substring(oldHref.indexOf("#"));
 	t = document.getElementById("template");
 	vl = t.options[t.selectedIndex].value;
-	document.location.href="?template:"+vl;
+	document.location.href="?template:"+vl+hash;
 }
 
 function selectData(obj) {
+  oldHref = document.location.href;
+  hash = "";
+  if (oldHref.indexOf("#")>=0) hash=oldHref.substring(oldHref.indexOf("#"));
   value = obj.options[obj.selectedIndex].value;
-  document.location.href="?data:"+value;
+  document.location.href="?data:"+value+hash;
 }
 
 function createInstance(prefix) {
@@ -49,13 +58,23 @@ function createDatasource() {
 }
 
 function editXML(id) {
-    window.open('editXML.php?filename='+id,"_blank","location,width=800,height=500");
+    window.open('editContent.php?type=xml&filename='+id,"_blank","location,width=800,height=800");
 //    document.location.href = ;
 }
 
 function newTemplate() {
-    window.open('editXML.php',"_blank","location,width=800,height=500");
+    window.open('editContent.php?type=xml',"_blank","location,width=800,height=800");
 }
+
+function editCSS(id) {
+    window.open('editContent.php?type=css&filename='+id,"_blank","location,width=800,height=800");
+//    document.location.href = ;
+}
+
+function newCSS() {
+    window.open('editContent.php?type=css',"_blank","location,width=800,height=800");
+}
+
 -->
 </script>
 <?php
@@ -64,7 +83,7 @@ function newTemplate() {
 function sublist($xmls, $parent, &$fragments, &$descriptions, &$params, &$parents) {
     echo "<ul>";
     foreach ($xmls as $file) {
-        if ($file[0]==".") continue;
+        if (is_dir("xml/".$file)) continue;
         $file = trim($file);
         if (empty($parent) && !empty($parents[$file])) continue;
         if ($parents[$file]!=$parent) continue;
@@ -73,6 +92,7 @@ function sublist($xmls, $parent, &$fragments, &$descriptions, &$params, &$parent
         echo "<li><div class=\"xmlreference\"><a href='view.php?" . $fragment . "'>" . $file . (($description !== FALSE) ? " (" . $description . ")" : "") . "</a></div>";
         echo '<img id="xmlchange_button" src="edit-5-m.png" onclick="editXML(\''.$file.'\')"/>';
         $parameters = $params[$file];
+        // var_dump($params);
         foreach (explode(",", $params) as $param) {
             if (substr($param, 0, 4) == "env:") {
                 echo "&nbsp;<i>" . $param . "</i>";
@@ -92,6 +112,7 @@ require_once "sessionds.php";
 $langDescription = array();
 $langDescription["ru"] = "Русский";
 $langDescription["en"] = "Английский";
+$langDescription[""] = "Любой";
 $css = scandir("css");
 $themes = array();
 $languages = array();
@@ -99,7 +120,11 @@ $languages = array();
 
 $shift = 0;
 
+$css_selectors = array();
+
 foreach ($css as $file) {
+    $css_selectors[$file] = "";
+    if (is_dir("css/".$file)) continue;
     if (substr($file, strlen($file) - 4, 4) == ".css") {
         $cssContent = file("css/" . $file);
         // var_dump($cssContent);
@@ -119,7 +144,9 @@ foreach ($css as $file) {
                 $shift++;
                 if ($shift!=1) continue;        //not the first level
                 $selector = trim(substr($str, 0, $selectorStart));
-                echo $selector."\n";
+                $css_selectors[$file][] = $selector;
+                //bind selector with file
+
                 $themeDelimiter = strpos($selector, "@");
                 if ($themeDelimiter !== FALSE) {
                     //theme defined
@@ -143,6 +170,7 @@ foreach ($css as $file) {
 $xmls = scandir("xml");
 $fragments = array();
 foreach ($xmls as $file) {
+    if (is_dir("xml/".$file)) continue;
     if (substr($file, strlen($file) - 4, 4) == ".xml") {
         $xmlContent = file("xml/" . $file);
         $firstTag = FALSE;
@@ -164,6 +192,8 @@ foreach ($xmls as $file) {
         $fragments[$file] = $firstTag;
     }
 }
+// var_dump($fragments);
+// die;
 // 		$languageStart = strpos($str,"!");
 // if ($languageStart!==FALSE) {
 // 	$languageCode = substr($str,$languageStart+1,strpos($str,"{")-$languageStart-2);
@@ -276,22 +306,6 @@ foreach ($xmls as $file) {
     }
 }
 
-foreach ($css as $file) {
-    $file = trim($file);
-    if (substr($file, strlen($file) - 4, 4) == ".css") {
-        $description = false;
-        $f = file("css/" . $file);
-        foreach ($f as $fp) {
-        }
-        $descriptions[$file] = $description;
-        $fragment = $fragments[$file];
-        $params[$file] = $render->getParams($fragment);
-        $parents[$file] = $render->getParent($fragment);
-    }
-}
-
-
-
 sublist($xmls, null, $fragments, $descriptions, $params, $parents);
 // foreach ($xmls as $file) {
 //     if ($file[0]==".") continue;
@@ -302,7 +316,84 @@ sublist($xmls, null, $fragments, $descriptions, $params, $parents);
 <button onclick="newTemplate()" class="action_button">Создать новый шаблон</button>
 </div>
 </div>
-<div id="css"></div>
+<div id="css">
+<h3>Фильтрация</h3>
+<div id="languages">
+<?php
+$planguages = $languages;
+$planguages[] = "";
+foreach ($planguages as $language) {
+    echo '<span style="cursor:pointer; font-weight: ' . ($language == $_SESSION["language"] ? "bold" : "normal") . '"';
+    echo ' onclick="change(\'lang:' . $language . '\')">' . $langDescription[$language] . '</span>&nbsp';
+}
+?>
+</div>
+<div id="themes">
+<?php
+$pthemes = $themes;
+$pthemes[] = "";
+foreach ($pthemes as $theme) {
+    echo '<span style="cursor:pointer; font-weight: ' . ($theme == $_SESSION["theme"] ? "bold" : "normal") . '"';
+    echo ' onclick="change(\'theme:' . $theme . '\')">' . (empty($theme) ? "любая":$theme);
+    echo '</span>&nbsp;';
+}
+?>
+</div>
+<ul>
+<?php
+
+$activeLanguage = $_SESSION["language"];
+$activeTheme = $_SESSION["theme"];
+
+foreach ($css_selectors as $filename=>$selectors) {
+    if ($filename[0]==".") continue;
+    $firstMatch = true;
+
+    foreach ($selectors as $selector) {
+        $theme = "";
+        $language = "";
+        $variant = "";
+        $fragment = "";
+
+        $originalSelector = $selector;
+
+        $variantDelimiter = strpos($selector,"#");
+        $langDelimiter = strpos($selector,"!");
+        $themeDelimiter = strpos($selector,"@");
+
+        if ($variantDelimiter!==FALSE) {
+            $variant = substr($selector,$variantDelimiter+1);
+            $selector = substr($selector, 0, $variantDelimiter);
+        }
+        if ($langDelimiter!==FALSE) {
+            $language = substr($selector,$langDelimiter+1);
+            $selector = substr($selector, 0, $langDelimiter);
+        }
+
+        if ($themeDelimiter!==FALSE) {
+            $theme = substr($selector, $themeDelimiter+1);
+            $selector = substr($selector, 0, $themeDelimiter);
+        }
+
+        $fragment = $selector;
+
+        $match = true;
+        if (!($language==$activeLanguage || $language=="" || $activeLanguage=="")) $match = false;
+        if (!($theme==$activeTheme || $theme=="" || $activeTheme=="")) $match = false;
+        
+        if ($match) {
+            if ($firstMatch) {
+                echo "<li><a href=\"#\" onclick=\"editCSS('".$filename."')\">".$filename."</a><ul>";
+                $firstMatch = false;
+            }
+            echo "<li>".$originalSelector."</li>";
+        }
+    }
+    if (!$firstMatch) echo "</ul>";
+}
+?>
+</ul>
+</div>
 <div id="context">
 <strong>Активный шаблон сеанса</strong><br/>
 <select id='template' onchange='selectTemplate()'>
@@ -312,7 +403,8 @@ $activeTemplate = $_SESSION["activeTemplate"];
 echo "<option value=''" . (empty($activeTemplate) ? " SELECTED" : "") . ">-</option>";
 $presets = scandir("presets");
 foreach ($presets as $preset) {
-    if ($preset[0] == ".") continue;
+    if (is_dir("presets/".$preset)) continue;
+//    if ($preset[0] == ".") continue;
     $content = file("presets/" . $preset);
     $description = $content[0];
     echo '<option value="' . $preset . '"' . ($activeTemplate == $preset ? " SELECTED" : "") . '>' . $description . '</option>';
@@ -334,7 +426,7 @@ $prefixes = array();
 $entries = array();
 $description = "";
 foreach ($data as $file) {
-    if ($file[0] == ".") continue;
+    if (is_dir("data/".$file)) continue;
     $prefix = substr($file, 0, strpos($file, "_"));
     $key = substr($file, strpos($file, "_") + 1);
     if (array_search($prefix, $prefixes) === FALSE) $prefixes[] = $prefix;

@@ -58,9 +58,6 @@ class Render {
             // var_dump($namespace, $tag);
             if ($namespace != "r" && $namespace != "env") {
                 return $this->parameters[$el]; //get local attribute
-
-            } else if ($namespace == "r") {
-                //todo: content
             } else {
                 if ($namespace == "env") {
                     //get environment variable
@@ -75,6 +72,11 @@ class Render {
     function resolveObject($el) {
         // echo "Resolving ".$el."\n";
         $el = trim($el);
+
+        if ($el[0]=="@") {
+            return $this->dataSource->getContentDigest(substr($el,1));  //digest for predefined content
+        }
+
         if (strpos($el, ":") === FALSE && strpos($el, "//") === FALSE) {
             return $el; //direct string
 
@@ -189,7 +191,12 @@ class Render {
                 $namespace = substr($element_name, 0, strpos($element_name, ":"));
                 $tagName = substr($element_name, strpos($element_name, ":") + 1);
                 if ($namespace=="r" && $tagName=="content") {
-                    $this->injectedParameters[] = "@".$element_attrs["ID"];     //inject content
+                    if (array_key_exists("ID", $element_attrs)) {
+                        $this->injectedParameters[] = "@".$element_attrs["ID"];     //inject content
+                    } else if (array_key_exists("REF", $element_attrs)) {
+                        $this->injectedParameters[] = "%".$element_attrs["REF"];
+                    }
+                    return;
                 }
                 if ($namespace != "r") {
                     //	    echo "Registered dependency... "."parent:".strtolower($element_name)." = ".strtolower($this->firstTag)."\n";
@@ -235,7 +242,11 @@ class Render {
                             $this->content.= $this->resolve($element_attrs["OF"]); //replace by value
                             break;
                         case "content":
-                            $this->content.= $this->getContent($element_attrs["ID"]);
+                            if (array_key_exists("ID", $element_attrs)) {
+                                $this->content.= $this->dataSource->getContent($element_attrs["ID"]);
+                            } else if (array_key_exists("REF",$element_attrs)) {
+                                $this->content.= $this->renderFragment($this->dataSource->getEnv($element_attrs["REF"]),$params,false);     //indirect embedding fragment
+                            }
                             break;
                     }
                 }
@@ -492,6 +503,34 @@ class Render {
         return null;
     }
 
+    function getDataSet($fragment,&$parameters) {
+        $fragment = strtolower($fragment);
+        $params = $this->memcache->get("params:" . $fragment);
+          // echo "For fragment ".$fragment." params is ".$params."\n";
+        //build key value
+        //need to extract data!
+        $dataSet = array();
+        $this->skipping = FALSE;
+        if (strlen(trim($params)) != 0) {
+            foreach (explode(",", $params) as $paramName) {
+                if ($paramName[0]=="%") {
+                    $emptyParams = array();
+                    $dataSet = array_unique(array_merge_recursive($dataSet,$this->getDataSet(substr($paramName,1),$emptyParams)));
+                    continue;
+                } 
+                if (array_key_exists($paramName, $parameters)) {
+                     // var_dump("Added env: ".$paramName);
+                    $parameters[$paramName] = $this->resolve($parameters[$paramName]);
+                    $dataSet[] = $parameters[$paramName];
+                } else {
+                     // var_dump("Added obj:".$paramName." to dataset (".$this->resolveObject($paramName).")");
+                    $dataSet[] = $this->resolveObject($paramName); //save default value
+                }
+            }
+        }
+        return $dataSet;
+    }
+
     function renderFragment($fragment, $parameters, $top) {
           // echo "Rendering ".$fragment."\n";
         //  echo "Bind";
@@ -508,26 +547,7 @@ class Render {
             $this->sourceSelectors[] = $localSelector;
             $this->css[] = $this->rulesToString($this->activeSelector, $localSelector);
         }
-        $fragment = strtolower($fragment);
-        $params = $this->memcache->get("params:" . $fragment);
-          // echo "For fragment ".$fragment." params is ".$params."\n";
-        //build key value
-        //need to extract data!
-        $dataSet = array();
-        $this->skipping = FALSE;
-        if (strlen(trim($params)) != 0) {
-            foreach (explode(",", $params) as $paramName) {
-                if (array_key_exists($paramName, $parameters)) {
-                     // var_dump("Added env: ".$paramName);
-                    $parameters[$paramName] = $this->resolve($parameters[$paramName]);
-                    $dataSet[] = $parameters[$paramName];
-                } else {
-                     // var_dump("Added obj:".$paramName." to dataset (".$this->resolveObject($paramName).")");
-                    $dataSet[] = $this->resolveObject($paramName); //save default value
-
-                }
-            }
-        }
+        $dataSet = $this->getDataSet($fragment,$parameters);
         $data = implode(",", $dataSet);
         $keyData = $this->language . ($data != "" ? "," . $data : "");
         //  echo "Entry key data: ".$keyData."\n";
@@ -582,8 +602,8 @@ class Render {
         // echo $this->cssFileSelector;
         //check file presence
         $cssExists = false;
+
         if (file_exists("cache/".$this->cssFileSelector . ".css") && filesize("cache/".$this->cssFileSelector . ".css") != 0 && $this->memcache->get("cssrendered:" . $this->cssFileSelector) !== FALSE) {
-            // echo "CSS Exists!";
             $this->reloadRenderedDefinitions($this->cssFileSelector);
             $cssExists = true;
         } else {
@@ -617,7 +637,7 @@ class Render {
         $newRules = array();
         foreach (explode(",", $cssSelectors) as $selector) {
             //    echo "Reloaded rule for ".$selector;
-            $newRules[$selector] = explode(";", $this->memcache->get("cssrules:" . $selector));
+            $newRules[$selector] = unserialize($this->memcache->get("cssrules:" . $selector));
         }
         $this->cssRules = $newRules;
     }
@@ -680,7 +700,6 @@ class Render {
             $cssFiles[] = $filename;
         }
         $allRules = array();
-        // var_dump($cssFiles);die;
         foreach ($cssFiles as $cssFile) {
             $this->memcache->delete("cssfile:" . $cssFile);
             //    echo $cssFile;
@@ -758,8 +777,8 @@ class Render {
         // var_dump($allRules);
         //override default rules
         //store rules to cache
-        foreach ($allRules as $selector => $ruleset) {
-            $ruleentry = implode(";", $ruleset);
+        foreach ($allRules as $selector => $innerRules) {
+            $ruleentry = serialize($innerRules);
             $this->memcache->set("cssrules:" . $selector, $ruleentry); //store specific css rules (hash???)
 
         }
@@ -770,7 +789,7 @@ class Render {
             foreach (explode(",", $index) as $indexName) {
                 $cssRulesIndex = explode(",", $indexName);
                 foreach ($cssRulesIndex as $selector) {
-                    $oldRules[$selector] = explode(";", $this->memcache->get("cssrules:" . $selector));
+                    $oldRules[$selector] = unserialize($this->memcache->get("cssrules:" . $selector));
                 }
             }
             foreach ($allRules as $selector => $value) {
